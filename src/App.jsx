@@ -19,6 +19,7 @@ function App() {
           <Route path="/configuration" element={<Configuration />} />
           <Route path="/statistics" element={<Statistics />} />
           <Route path="/guide" element={<Guide />} />
+          <Route path="/*" element={<Navigate to="/home" replace />} />
         </Routes>
       </BrowserRouter>
     </StatusProvider>
