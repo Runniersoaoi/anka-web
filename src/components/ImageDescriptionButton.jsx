@@ -10,6 +10,14 @@ export default function CameraImageDescriber() {
   const [description, setDescription] = useState('');
   const [error, setError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(10);
+  
+
+  const speak = (text) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'es-ES'; // Español
+    speechSynthesis.speak(utterance);
+  };
+  
 
   console.log("[STATE] Streaming:", streaming);
 
@@ -17,8 +25,13 @@ export default function CameraImageDescriber() {
     let timer;
     if (streaming && timeLeft > 0) {
       timer = setTimeout(() => {
-        console.log(`[TIMER] Tiempo restante: ${timeLeft - 1}s`);
-        setTimeLeft((prev) => prev - 1);
+        const newTime = timeLeft - 1;
+        if (newTime === 9) {
+          speak('Empezando la cuenta regresiva para capturar el entorno. 10');
+        } else if (newTime >= 0) {
+          speak(newTime.toString());
+        }
+        setTimeLeft(newTime);
       }, 1000);
     } else if (timeLeft === 0 && streaming) {
       console.log("[EVENT] Tiempo terminado, capturando imagen...");
@@ -86,7 +99,7 @@ export default function CameraImageDescriber() {
     stopCamera();
     await describeImage(imageData);
   };
-
+// 
   const describeImage = async (imageDataUrl) => {
     console.log('[API] Enviando imagen a OpenAI para descripción...');
     try {
@@ -121,6 +134,7 @@ export default function CameraImageDescriber() {
       if (content) {
         console.log('[API] Descripción recibida:', content);
         setDescription(content);
+        speak(content);
       } else {
         console.error('[ERROR] Respuesta inválida de la API:', data);
         setError('No se pudo obtener una descripción válida.');
