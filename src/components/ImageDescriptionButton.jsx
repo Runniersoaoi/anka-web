@@ -10,16 +10,14 @@ export default function CameraImageDescriber() {
   const [description, setDescription] = useState('');
   const [error, setError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(10);
-  
+  const [devices, setDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
 
   const speak = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'es-ES'; // Español
+    utterance.lang = 'es-ES';
     speechSynthesis.speak(utterance);
   };
-  
-
-  console.log("[STATE] Streaming:", streaming);
 
   useEffect(() => {
     let timer;
@@ -34,7 +32,6 @@ export default function CameraImageDescriber() {
         setTimeLeft(newTime);
       }, 1000);
     } else if (timeLeft === 0 && streaming) {
-      console.log("[EVENT] Tiempo terminado, capturando imagen...");
       captureImage();
     }
 
@@ -51,18 +48,28 @@ export default function CameraImageDescriber() {
     }
   }, [streaming]);
 
+  useEffect(() => {
+    navigator.mediaDevices.enumerateDevices().then((deviceInfos) => {
+      const videoDevices = deviceInfos.filter((device) => device.kind === 'videoinput');
+      setDevices(videoDevices);
+      if (videoDevices.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(videoDevices[0].deviceId);
+      }
+    });
+  }, []);
+
   const startCamera = async () => {
-    console.log('[ACTION] Iniciando cámara...');
     try {
       setDescription('');
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined }
+      });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
         setStreaming(true);
         setTimeLeft(10);
-        console.log('[SUCCESS] Cámara iniciada correctamente');
       }
     } catch (err) {
       console.error('[ERROR] Error al iniciar cámara:', err);
@@ -71,42 +78,32 @@ export default function CameraImageDescriber() {
   };
 
   const stopCamera = () => {
-    console.log('[ACTION] Deteniendo cámara...');
     const stream = videoRef.current?.srcObject;
     if (stream) {
       stream.getTracks().forEach((track) => {
         track.stop();
-        console.log(`[STREAM] Track detenido: ${track.kind}`);
       });
     }
     setStreaming(false);
   };
 
   const captureImage = async () => {
-    console.log('[ACTION] Capturando imagen...');
-    if (!videoRef.current || !canvasRef.current) {
-      console.warn('[WARNING] Referencias no disponibles para captura');
-      return;
-    }
-
+    if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     const imageData = canvas.toDataURL('image/jpeg');
-
     stopCamera();
     await describeImage(imageData);
   };
-// 
+
   const describeImage = async (imageDataUrl) => {
-    console.log('[API] Enviando imagen a OpenAI para descripción...');
     try {
       setLoading(true);
       setError(null);
       setDescription('');
-
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -119,7 +116,7 @@ export default function CameraImageDescriber() {
             {
               role: 'user',
               content: [
-                { type: 'text', text: 'Describe en detalle lo que ves en esta imagen.' },
+                { type: 'text', text: 'Describe de manera simplificada lo que ves en esta imagen.' },
                 { type: 'image_url', image_url: { url: imageDataUrl } },
               ],
             },
@@ -130,13 +127,10 @@ export default function CameraImageDescriber() {
 
       const data = await response.json();
       const content = data?.choices?.[0]?.message?.content;
-
       if (content) {
-        console.log('[API] Descripción recibida:', content);
         setDescription(content);
         speak(content);
       } else {
-        console.error('[ERROR] Respuesta inválida de la API:', data);
         setError('No se pudo obtener una descripción válida.');
       }
     } catch (err) {
@@ -150,6 +144,23 @@ export default function CameraImageDescriber() {
   return (
     <div className="relative p-4 bg-white rounded-xl shadow-md w-full max-w-md mx-auto">
       {!streaming && !loading && (
+        <div className="mb-4">
+          <label className="block mb-1 text-sm font-medium text-gray-700">Selecciona una cámara:</label>
+          <select
+            value={selectedDeviceId || ''}
+            onChange={(e) => setSelectedDeviceId(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg p-2"
+          >
+            {devices.map((device) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label || `Cámara ${device.deviceId}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!streaming && !loading && (
         <button
           onClick={startCamera}
           className="w-full bg-blue-600 text-white text-lg font-semibold py-4 rounded-xl hover:bg-blue-700 transition"
@@ -158,7 +169,6 @@ export default function CameraImageDescriber() {
         </button>
       )}
 
-      {/* Video SIEMPRE montado, solo oculto si no streaming */}
       <div className={`relative ${!streaming ? 'hidden' : ''}`}>
         <video
           ref={videoRef}
